@@ -191,49 +191,74 @@ public class BossController : MonoBehaviour
             currentState?.OnGroundTouch();
         }
     }
-    // [추가] 다음 행동을 결정하는 함수
+    // 보스의 다음 행동을 결정하는 함수
     public void ChooseNextPattern()
     {
         List<BossBaseState> availablePatterns = new List<BossBaseState>();
         float distanceToPlayer = Vector2.Distance(transform.position, player.position);
 
-        // --- [1단계: 공통 패턴 (일반/레이지 모두 사용)] ---
-        if (CanUseSkyFall()) availablePatterns.Add(skyFallState);
-        if (CanUseLaser()) availablePatterns.Add(laserState);
+        // --- [1단계: 현재 사용 가능한 패턴 체크] ---
+        bool canSkyFall = CanUseSkyFall();
+        bool canLaser = CanUseLaser();
+        bool canLaserStorm = isRageMode && CanUseLaserStorm();
+        bool canExplode = isRageMode && CanUseExplode();
 
-        // --- [2단계: 레이지 모드 전용 패턴 추가] ---
-        if (isRageMode)
-        {
-            if (CanUseLaserStorm()) availablePatterns.Add(laserStormState);
-            if (CanUseExplode()) availablePatterns.Add(explodeState);
-        }
+        // --- [2단계: 거리 기반 가중치 시스템 적용] ---
 
-        // --- [3단계: 거리 기반 내려찍기(Jump) 가중치 조절] ---
+        // A. 근거리 (5f 미만): 점프 확률 대폭 증가 (3배)
         if (distanceToPlayer < 5f)
         {
-            // 가까우면 점프 확률 대폭 증가 (리스트에 3개 추가)
             availablePatterns.Add(jumpState);
             availablePatterns.Add(jumpState);
             availablePatterns.Add(jumpState);
+            if (canLaser) availablePatterns.Add(laserState);
         }
+        // B. 중거리 (5f ~ 12f): 균형 잡힌 패턴 구성
         else if (distanceToPlayer < 12f)
         {
-            // 중간 거리면 점프 확률 보통
             availablePatterns.Add(jumpState);
+            if (canLaser) availablePatterns.Add(laserState);
+            if (canSkyFall) availablePatterns.Add(skyFallState);
         }
+        // C. 원거리 (12f 이상): 레이저 발사 확률 대폭 증가 (2배)
         else
         {
-            // 너무 멀면 점프를 리스트에 넣지 않음 (원거리 레이저 패턴 유도)
+            if (canLaser)
+            {
+                availablePatterns.Add(laserState);
+                availablePatterns.Add(laserState); // 가중치 부여를 위한 중복 추가
+            }
+            if (canSkyFall) availablePatterns.Add(skyFallState);
         }
+
+        // D. 레이지 모드 전용 패턴 가중치 추가
+        if (canLaserStorm) availablePatterns.Add(laserStormState);
+        if (canExplode) availablePatterns.Add(explodeState);
 
         // 안전장치: 리스트가 비어있다면 기본 점프 추가
         if (availablePatterns.Count == 0) availablePatterns.Add(jumpState);
 
-        // --- [4단계: 랜덤 선택 및 실행] ---
+        // --- [3단계: 안전장치 (후보가 없을 경우 기본 점프)] ---
+        if (availablePatterns.Count == 0) availablePatterns.Add(jumpState);
+
+        // --- [4단계: 랜덤 선택] ---
         int randomIndex = Random.Range(0, availablePatterns.Count);
         BossBaseState selectedState = availablePatterns[randomIndex];
 
-        // 쿨타임 기록
+        // --- [5단계: 전체 리스트 시각화 디버그 로그] ---
+        string fullListLog = "";
+        for (int i = 0; i < availablePatterns.Count; i++)
+        {
+            // 최종 선택된 인덱스만 하이라이트 표시
+            string color = (i == randomIndex) ? "cyan" : "white";
+            fullListLog += $"<color={color}>[{availablePatterns[i].GetType().Name}]</color> ";
+        }
+
+        Debug.Log($"<color=yellow>[AI Pattern Selection]</color> 거리: {distanceToPlayer:F1}f\n" +
+                  $"<color=grey>전체 가중치 리스트: {fullListLog}</color>\n" +
+                  $"<color=orange>★최종 실행: {selectedState.GetType().Name} (Index: {randomIndex})</color>");
+
+        // 쿨타임 기록 로직
         if (selectedState == laserStormState) RecordLaserStormTime();
         else if (selectedState == explodeState) RecordExplodeTime();
         else if (selectedState == skyFallState) RecordSkyFallTime();
