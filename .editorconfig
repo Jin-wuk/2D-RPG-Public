@@ -1,0 +1,5 @@
+root = true
+
+# 한글 주석이 CP949로 저장되어 GitHub에서 깨지지 않도록 C# 스크립트 인코딩을 UTF-8로 고정
+[*.cs]
+charset = utf-8-bom
